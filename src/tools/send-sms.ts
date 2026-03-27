@@ -1,6 +1,7 @@
 import type { Config } from '../config.js';
 import { resolveCredentials } from '../config.js';
 import { createProvider } from '../providers/index.js';
+import { forceGsm7 } from '../utils/gsm7.js';
 
 export const sendSmsTool = {
   name: 'send_sms',
@@ -28,6 +29,10 @@ export const sendSmsTool = {
         type: 'string',
         description: 'Override web2sms.ro API secret (optional, uses WEB2SMS_SECRET env var if not provided)',
       },
+      force_gsm7: {
+        type: 'boolean',
+        description: 'Transliterate message to GSM-7 charset before sending (strips diacritics and non-GSM characters). Default: false',
+      },
     },
     required: ['phone', 'message'],
   },
@@ -38,7 +43,8 @@ export async function handleSendSms(
   config: Config,
 ) {
   const phone = args.phone as string;
-  const message = args.message as string;
+  const rawMessage = args.message as string;
+  const message = args.force_gsm7 ? forceGsm7(rawMessage) : rawMessage;
   const sender = (args.sender as string | undefined) ?? config.sender;
   const { apiKey, secret } = resolveCredentials(
     config,
