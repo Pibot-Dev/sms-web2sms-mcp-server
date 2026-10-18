@@ -10,6 +10,7 @@ MCP (Model Context Protocol) server for sending SMS via [web2sms.ro](https://www
 - Per-request credential overrides (or use environment defaults)
 - SHA-512 HMAC authentication
 - Full error code mapping with retry hints
+- **WhatsApp via [WAHA](https://waha.devlike.pro)** — single and series sending with anti-ban pacing
 
 ## Quick Start
 
@@ -93,6 +94,52 @@ Check prepaid credit balance.
 |-----------|------|----------|-------------|
 | `api_key` | string | No | Override API key |
 | `api_secret` | string | No | Override API secret |
+
+### send_whatsapp
+
+Send one WhatsApp text through WAHA. It goes through the same paced queue as a series. Returns the message id if it is sent within ~90s, otherwise a `jobId`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `phone` | string | Yes | International number (`+40712345678`; `07XXXXXXXX` is treated as Romanian) |
+| `message` | string | Yes | Message text |
+| `session` | string | No | WAHA session (default `WAHA_SESSION`) |
+
+### send_whatsapp_series
+
+Send to several recipients **one after another**. Returns a `jobId` right away, so the MCP client is never blocked while the series runs in the background.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `recipients` | array | Yes | `[{ phone, name?, message? }]`, sent in order |
+| `message` | string | No | Template for recipients without their own `message`; supports `{name}`, `{phone}` |
+| `session` | string | No | WAHA session |
+
+### whatsapp_series_status / cancel_whatsapp_series
+
+Take a `job_id`. Status lists every recipient (`queued`, `sent`, `failed`, `skipped`, `cancelled`) with message ids and errors. Cancel stops whatever is still queued.
+
+### How the WhatsApp sender avoids account locking
+
+- **Strictly serial per session**: all sends for a WAHA session share one queue, built as a promise chain. There are no mutexes, nothing blocks the event loop, and parallel tool calls can't burst messages.
+- **Human-like flow** for every message: check the number exists → send seen → start typing for a time based on message length → stop typing → send.
+- **Randomized gap** between messages (`WAHA_MIN_DELAY_MS`–`WAHA_MAX_DELAY_MS`, 20–60s by default) and a rolling **hourly cap** (`WAHA_HOURLY_LIMIT`, 40).
+- **Skips** numbers that aren't on WhatsApp, duplicates and invalid numbers, so those never count as sends.
+- **Session check**: a job only starts when the WAHA session is `WORKING`.
+- **Circuit breaker**: the series stops after `WAHA_MAX_CONSECUTIVE_FAILURES` (3) failures in a row. Retries back off, with a long backoff on HTTP 429.
+- Series are capped at `WAHA_MAX_SERIES_SIZE` (50) recipients.
+
+To keep the risk low: message people who expect to hear from you, personalize the text (`{name}`), don't send links in the first message, and warm up new numbers slowly. Job state lives in memory and is lost when the server restarts.
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `WAHA_URL` | `http://localhost:3000` | WAHA base URL |
+| `WAHA_API_KEY` | — | Sent as `X-Api-Key` |
+| `WAHA_SESSION` | `default` | Default WAHA session |
+| `WAHA_MIN_DELAY_MS` / `WAHA_MAX_DELAY_MS` | `20000` / `60000` | Random gap between messages |
+| `WAHA_HOURLY_LIMIT` | `40` | Max messages per rolling hour per session |
+| `WAHA_MAX_SERIES_SIZE` | `50` | Max recipients per series |
+| `WAHA_MAX_CONSECUTIVE_FAILURES` | `3` | Abort series after this many failures in a row |
 
 ## Provider
 

@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts"
   },
-  "keywords": ["mcp", "sms", "web2sms", "romania", "gateway"],
+  "keywords": ["mcp", "sms", "web2sms", "romania", "gateway", "whatsapp", "waha"],
   "license": "MIT",
   "repository": {
     "type": "git",
